@@ -1,0 +1,10 @@
+name: rank_scan_demo
+description: 网文扫榜工具（纯 Dart + ffi 原生 Win32 GUI，零第三方 UI 依赖，可打包单 exe）
+publish_to: none
+
+environment:
+  sdk: ^3.4.0
+
+dependencies:
+  # 只依赖它 —— 调 Win32 API 必需。UI、绘图、控件全部自写，不引入 Flutter/Qt。
+  ffi: ^2.1.0

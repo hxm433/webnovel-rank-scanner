@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>网文扫榜 · 数据页</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--panel2:#1f2430;--line:#2b3140;--fg:#e6e8ee;
+        --dim:#8b94a7;--acc:#5ac8fa;--ok:#3ddc84;--warn:#ffb454;--bad:#ff6b6b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  header{position:sticky;top:0;z-index:5;background:rgba(15,17,21,.94);backdrop-filter:blur(6px);
+         border-bottom:1px solid var(--line);padding:11px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  .stat{color:var(--dim);font-size:12px}
+  button,select{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+                border-radius:6px;padding:5px 10px;font:inherit;cursor:pointer}
+  button:hover{border-color:var(--acc)}
+  layout{display:flex;align-items:flex-start}
+  aside{width:280px;flex:0 0 280px;border-right:1px solid var(--line);padding:12px;
+        max-height:calc(100vh - 54px);overflow:auto;position:sticky;top:54px}
+  main{flex:1;padding:18px 22px;min-width:0}
+  .grp{margin-bottom:14px}
+  .grp h3{margin:0 0 6px;font-size:12px;color:var(--dim);letter-spacing:.5px}
+  .item{padding:6px 8px;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;
+        gap:8px;align-items:baseline;border:1px solid transparent}
+  .item:hover{background:var(--panel)}
+  .item.on{background:var(--panel2);border-color:var(--acc)}
+  .item .n{color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 14px}
+  .card b{font-size:22px;display:block;font-variant-numeric:tabular-nums}
+  .card span{color:var(--dim);font-size:12px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 16px;margin-bottom:14px}
+  section h2{margin:0 0 10px;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .tag{font-size:11px;padding:2px 7px;border-radius:99px;border:1px solid var(--line);color:var(--dim)}
+  .tag.ok{color:var(--ok);border-color:var(--ok)} .tag.warn{color:var(--warn);border-color:var(--warn)}
+  .tag.bad{color:var(--bad);border-color:var(--bad)} .tag.acc{color:var(--acc);border-color:var(--acc)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:12px}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr:hover td{background:rgba(90,200,250,.05)}
+  .bar{height:7px;background:var(--panel2);border-radius:4px;overflow:hidden;min-width:60px}
+  .bar>i{display:block;height:100%;background:var(--acc)}
+  .chip{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:99px;
+        padding:2px 9px;margin:0 6px 6px 0;font-size:12px}
+  .mut{color:var(--dim)} .sm{font-size:12px} .obf{color:var(--warn)}
+  .note{background:rgba(255,180,84,.08);border-left:3px solid var(--warn);padding:8px 12px;
+        border-radius:0 6px 6px 0;margin:10px 0;font-size:12.5px}
+  .hint{background:rgba(90,200,250,.08);border-left:3px solid var(--acc);padding:8px 12px;
+        border-radius:0 6px 6px 0;margin:10px 0;font-size:12.5px}
+  .up{color:var(--ok)} .down{color:var(--bad)} .flat{color:var(--dim)}
+  .scroll{overflow-x:auto} a{color:var(--acc)}
+  /* 点书名看详情：虚线是"这里能点"的视觉语汇，与实心链接区分开 */
+  .bklink{cursor:pointer;border-bottom:1px dotted var(--acc)}
+  .bklink:hover{color:var(--acc)}
+  #bk{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.55);
+      display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto}
+  #bk.on{display:flex}
+  .bkbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+         max-width:620px;width:100%;padding:18px 20px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+  .bkbox h2{margin:0 0 4px;font-size:17px}
+  .bkbox h3{margin:14px 0 6px;font-size:13px;color:var(--dim);letter-spacing:.5px}
+  .bkbox .row{display:flex;justify-content:space-between;gap:12px;padding:5px 0;
+              border-bottom:1px solid var(--line)}
+  .bkbox .row:last-child{border-bottom:0}
+  .bkclose{float:right;margin-left:10px}
+  @media(max-width:860px){aside{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>网文扫榜</h1>
+  <span class="tag acc">单文件页 · 数据已内嵌</span>
+  <span class="stat" id="hstat"></span>
+  <span style="flex:1"></span>
+  <!-- ★ 用 data-act + 事件委托，不用内联 onclick：内联处理器会逼 CSP 开
+       unsafe-inline（安全审查里 fanqie-radar 那条是同类问题）。 -->
+  <button data-act="overview">概览</button>
+  <button data-act="csv">导出当前榜 CSV</button>
+  <span class="stat">要换新数据：跑一次 开始.cmd 选 1</span>
+</header>
+<div id="bk"></div>
+<layout><aside id="side"></aside><main id="main"></main></layout>
+<script id="rankdata" type="application/json">__DATA__</script>
+<script>
+const D = JSON.parse(document.getElementById('rankdata').textContent);
+let cur = null, base = null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// ★ 外链协议白名单（安全审查，2026-10-02）：书链 / 来源页来自抓取结果，
+//   `esc` 只转义引号、**不管协议** —— `javascript:` 链接点一下就执行。
+//   只放行 http/https；`file:` / `data:` / 协议相对（`//evil.com`）一律不放。
+const safeUrl = s => {
+  const v = String(s==null?'':s).trim();
+  if (!/^https?:\/\//i.test(v)) return '';
+  try {
+    const u = new URL(v);
+    if (u.hostname === 'book.qidian.com') {
+      const m = u.pathname.match(/\/info\/(\d+)/);
+      if (m) return 'https://m.qidian.com/book/' + m[1] + '/';
+    }
+  } catch(e) {}
+  return v;
+};
+/** 外链一律带 noopener + noreferrer（前者挡 window.opener，后者挡 Referer 泄漏）。 */
+const extLink = (u, text, cls) => {
+  const v = safeUrl(u);
+  if (!v) return '';
+  const c = cls ? ` class="${cls}"` : '';
+  return `<a${c} href="${esc(v)}" target="_blank" rel="noopener noreferrer">${esc(text==null?u:text)}</a>`;
+};
+const wan = n => n==null?'-':(n>=10000?(n/10000).toFixed(1)+'万':n);
+const meta = i => D.snapshots[i].meta;
+const label = m => `${m.source==='qidian'?'起点':m.source==='fanqie'?'番茄':m.source==='qimao'?'七猫':m.source==='jjwxc'?'晋江':m.source}`
+  + ` · ${m.board}${m.category?' · '+m.category:''} · ${m.date}`;
+
+function metricCells(m, legend){
+  const parts = Object.entries(m||{}).map(([k,v]) => {
+    const l = legend.labels[k] || k;
+    return k==='words'
+      ? `<span class="mut" title="${esc(l)}">${esc(l.replace(/（.*/,''))} ${wan(v)}</span>`
+      : `${esc(l.replace(/（.*/,''))} <b>${wan(v)}</b>`;
+  });
+  return parts.join(' · ') || '<span class="mut">-</span>';
+}
+const titleCell = e => e.title_obfuscated
+  ? `<span class="obf" title="书名被字体反爬混淆（指标仍是明文）">${esc(e.title)}〔名待补〕</span>`
+  : esc(e.title);
+
+function renderSide(){
+  const groups = {};
+  D.snapshots.forEach((b,i)=>{ (groups[b.meta.source] ??= []).push([b.meta,i]); });
+  let h = '';
+  for(const [src,list] of Object.entries(groups)){
+    const name = list[0][0] ? label(list[0][0]).split(' · ')[0] : src;
+    h += `<div class="grp"><h3>${esc(name)} · ${list.length} 份</h3>`;
+    h += list.map(([m,i])=>{
+      const on = cur===i?' on':'';
+      return `<div class="item${on}" data-i="${i}">
+        <span>${esc(m.board)}${m.category?' · '+esc(m.category):''}
+          <div class="n sm mut">${m.date}${m.ok?'':' ⚠'}</div></span>
+        <span class="n">${m.count}</span></div>`;
+    }).join('') + '</div>';
+  }
+  $('side').innerHTML = h;
+  $('side').querySelectorAll('.item').forEach(el=>el.onclick=()=>show(+el.dataset.i));
+}
+
+function showOverview(){
+  cur = null; renderSide();
+  let h = `<section><h2>本轮总览 <span class="tag">${D.count} 份快照</span></h2>
+    <div class="cards">` + D.sources.map(s=>
+      `<div class="card"><b>${s.books}</b><span>${esc(s.name)} · ${s.snapshots} 份 · ${s.ok} 份有数据</span></div>`).join('') +
+    `</div><div class="note">${esc(D.metrics_warning)}</div>
+     <div class="sm mut">生成时间 ${esc(D.generated_at)}</div></section>`;
+
+  for(const [src,list] of Object.entries(D.overview.per_source)){
+    const total = list.reduce((a,b)=>a+b.count,0)||1;
+    h += `<section><h2>${esc(D.sources.find(s=>s.source===src)?.name||src)} 题材分布
+      <span class="tag sm">按平台各自统计</span></h2>
+      <div class="scroll"><table><thead><tr><th>题材</th><th>出现次数</th>
+      <th style="width:26%">占比</th><th>最好名次</th><th class="num">平均字数</th></tr></thead><tbody>`;
+    list.slice(0,14).forEach(c=>{
+      const pct = c.count/total*100;
+      h += `<tr><td>${esc(c.category)}</td><td class="num">${c.count}</td>
+        <td><div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div><span class="sm mut">${pct.toFixed(1)}%</span></td>
+        <td class="num">#${c.best_rank}</td><td class="num">${wan(c.avg_words)}</td></tr>`;
+    });
+    h += '</tbody></table></div></section>';
+  }
+
+  const cb = D.overview.cross_board_books;
+  if(cb.length){
+    h += `<section><h2>同时出现在多个榜的书 <span class="tag acc">跨榜信号</span></h2>
+      <div class="sm mut" style="margin-bottom:8px">一本书记越多榜，越可能是真在被推着走，而不是单榜噪声。</div>
+      <div class="scroll"><table><thead><tr><th>书名</th><th>榜数</th><th>出现在哪些榜</th></tr></thead><tbody>`;
+    cb.forEach(b=>{
+      const t = b.obf ? `<span class="obf">${esc(b.title)}〔名待补〕</span>` : esc(b.title);
+      h += `<tr><td>${t}</td><td class="num">${new Set(b.boards).size}</td>
+            <td class="sm mut">${b.boards.map(esc).join('； ')}</td></tr>`;
+    });
+    h += '</tbody></table></div></section>';
+  }
+  if(D.bad_files.length)
+    h += `<section><h2>解析失败的文件</h2><pre>${esc(D.bad_files.join('\n'))}</pre></section>`;
+  $('main').innerHTML = h;
+}
+
+function show(i){
+  cur = i; base = null; closeBook(); renderSide(); render();
+}
+
+// ── 书籍详情面板 ──
+//
+// ★ 为什么要有它（审查报告："详情页是外链、无内嵌详情"）：明细里的书链是**外链**，
+//   点一下就离开这份页面；而"这本书在这几期里怎么变"恰恰是页面**自己手里就有**的
+//   数据（`D.comparisons`）。先给内嵌面板，外链只是面板里的一个出口。
+//   ★ 全部数据来自内嵌 JSON，**不发请求、不跳出页面**。
+
+/**
+ * 与 Dart 端 `bookKeyOf` **同口径**的跨快照主键。
+ *
+ * ★★ 为什么不能按 `title` 匹配（审查报告 #35）：番茄**每页字体不同**，
+ *   同一本书在两次快照里的 PUA 码点不一样 —— 按书名找历史永远找不到，
+ *   面板的"各期名次"会一直是空的。桌面端早就是用 key 做轨道的。
+ */
+const bookKeyOf = e => (e.book_id ? 'id:' + e.book_id : 'title:' + e.title);
+
+/** 这本书在"当前这份榜 vs 各期基准"里的名次变化。 */
+function bookHistory(entry){
+  const out = [];
+  const pref = m_id(cur) + '|';
+  const want = bookKeyOf(entry);
+  Object.keys(D.comparisons).forEach(k=>{
+    if(k.indexOf(pref) !== 0) return;
+    const c = D.comparisons[k];
+    // ★ 优先按 key 匹配；老数据（没写 key 的那批）退回按书名匹配
+    const row = (c.rows||[]).find(r=> (r.key != null ? r.key === want : r.title === entry.title));
+    if(!row) return;
+    out.push({base:c.base_label, prev:row.prev, curr:row.curr, chg:row.chg,
+              isNew:row.new, gone:row.gone, same:!!c.same_series});
+  });
+  return out;
+}
+
+function closeBook(){ $('bk').classList.remove('on'); }
+
+function showBook(ei){
+  const b = D.snapshots[cur], e = (b.entries||[])[ei];
+  if(!e) return;
+  const name = e.title_obfuscated ? `${esc(e.title)}〔名待补〕` : esc(e.title);
+  const labels = (b.legend && b.legend.labels) || {};
+  let h = `<button class="bkclose" data-bkclose="1">关闭</button>
+    <h2>${name}</h2>
+    <div class="sm mut">${esc(e.author||'-')}${e.category?' · '+esc(e.category):''}${
+      e.tags&&e.tags.length?' · '+e.tags.map(esc).join('/'):''}</div>
+    <div class="sm mut">本榜名次 <b>#${e.rank}</b></div>`;
+
+  h += `<h3>指标</h3>`;
+  const mkeys = Object.keys(e.metrics||{});
+  if(mkeys.length){
+    mkeys.forEach(k=>{ h += `<div class="row"><span>${esc(labels[k]||k)}</span>
+      <b class="num">${wan(e.metrics[k])}</b></div>`; });
+    h += `<div class="sm mut" style="margin-top:6px">各平台指标口径不同，<b>不要跨平台比大小</b>。</div>`;
+  } else { h += `<div class="sm mut">这份快照没有指标字段。</div>`; }
+
+  // 其他字段（简介等）—— 只展示确实有值的，别堆一堆 undefined
+  const extra = e.extra || {};
+  const extraKeys = Object.keys(extra).filter(k=>extra[k]!=null && extra[k]!=='');
+  if(extraKeys.length){
+    h += `<h3>其他字段</h3>`;
+    extraKeys.forEach(k=>{ h += `<div class="row"><span class="mut">${esc(k)}</span>
+      <span>${esc(String(extra[k]))}</span></div>`; });
+  }
+
+  const hist = bookHistory(e);
+  h += `<h3>各期名次</h3>`;
+  if(hist.length){
+    h += `<table><thead><tr><th>对比基准</th><th>基准</th><th>本次</th><th>变化</th></tr></thead><tbody>`;
+    hist.forEach(t=>{
+      const d = t.isNew ? '<span class="tag ok sm">新上</span>'
+              : t.gone ? '<span class="tag bad sm">掉榜</span>'
+              : delta(t.chg);
+      h += `<tr><td class="sm">${esc(t.base)}${t.same?'':' <span class="tag warn sm">异系列</span>'}</td>
+        <td class="num">${t.prev?'#'+t.prev:'—'}</td>
+        <td class="num">${t.curr?'#'+t.curr:'掉榜'}</td><td>${d}</td></tr>`;
+    });
+    h += `</tbody></table>`;
+  } else {
+    h += `<div class="sm mut">没有可比期（同一平台只有这一份快照，或这次没选对比基准）。
+      在页面上方选一个「对比基准」后，这里会列出这本书在各期的名次。</div>`;
+  }
+
+  const link = extLink(e.url, '在浏览器打开详情页 ↗', '');
+  h += `<div style="margin-top:16px">${
+    link || '<span class="sm mut">这一行没有可打开的链接。</span>'}</div>`;
+
+  const box = $('bk');
+  box.innerHTML = `<div class="bkbox" role="dialog" aria-modal="true">${h}</div>`;
+  box.classList.add('on');
+}
+
+// ── 导出当前榜为 CSV ──
+//
+// ★ 为什么页面上也要能导出（审查报告："HTML 页面是纯查看器，无法导出"）：
+//   用户常常就是**在浏览器里**看这份页面，看完想存一份还得回桌面端 —— 很别扭。
+//
+// ★ 三条口径必须与桌面端 `lib/exporters.dart` **完全一致**，否则"网页导出的
+//   CSV"和"软件导出的 CSV"会不一样（那正是用户报过的"两处不一致"）：
+//   ① 公式注入消毒：以 `= + - @ TAB CR` 开头的字符串前置单引号；
+//   ② BOM：开头写 \ufeff，否则 Excel 打开中文乱码；
+//   ③ RFC 4180 引号：含 `, " 换行` 的字段加双引号、内部引号翻倍。
+const sanitizeCell = v => (typeof v === 'string' && /^[=+\-@\t\r]/.test(v)) ? "'" + v : v;
+function toCsv(headers, rows){
+  const cell = v => {
+    const s = v == null ? '' : String(sanitizeCell(v));
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  return '\ufeff' + [headers.map(cell).join(',')]
+    .concat(rows.map(r => r.map(cell).join(','))).join('\r\n');
+}
+
+/** 导出**当前选中的这份榜**（与屏幕上看到的同一份）。 */
+function exportCurrentCsv(){
+  const b = D.snapshots[cur], m = b.meta;
+  const labels = (b.legend && b.legend.labels) || {};
+  const keys = [];
+  (b.entries || []).forEach(e => Object.keys(e.metrics || {}).forEach(k => {
+    if (keys.indexOf(k) < 0) keys.push(k);
+  }));
+  keys.sort((a, x) => (a === 'words' ? 1 : x === 'words' ? -1 : a < x ? -1 : 1));
+
+  const headers = ['名次', '书名', '作者', '题材', '标签', '书名是否被混淆', '链接']
+    .concat(keys.map(k => labels[k] || k)).concat(['备注']);
+
+  const noteOf = e => {
+    const x = e.extra || {};
+    const out = [];
+    if (x.creationStatus != null) out.push(x.creationStatus === '0' ? '完结' : '连载');
+    if (x.isOver != null) out.push(x.isOver === '1' ? '完结' : '连载');
+    if (x.status) out.push(x.status);
+    return out.join(' · ');
+  };
+
+  const rows = (b.entries || []).map(e => [
+    e.rank, e.title, e.author || '', e.category || '',
+    (e.tags || []).join('/'), e.title_obfuscated ? '是' : '否', e.url || '',
+  ].concat(keys.map(k => (e.metrics && e.metrics[k] != null) ? e.metrics[k] : ''))
+   .concat([noteOf(e)]));
+
+  const csv = toCsv(headers, rows);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = ('榜单_' + label(m)).replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_') + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 800);
+}
+
+function trendsFor(){
+  if(base==null) return null;
+  // ★ 对比键用 meta.id（不是数组下标）—— 下标只在渲染时排序用，会随快照增减而变
+  return (D.comparisons[`${m_id(cur)}|${base}`] || null);
+}
+const m_id = i => D.snapshots[i].meta.id;
+
+function render(){
+  const b = D.snapshots[cur], m = b.meta, a = b.analysis;
+  const sameSeries = D.snapshots.map((x,idx)=>[x,idx])
+    .filter(([x])=>x.meta.source===m.source && x.meta.id!==m.id);
+  const opts = sameSeries.map(([x])=>
+    `<option value="${x.meta.id}" ${base===x.meta.id?'selected':''}>${esc(label(x.meta))}`
+    + (x.meta.series_key===m.series_key?'（同系列，可当趋势）':'（另一张榜，不是趋势）')+'</option>').join('');
+
+  let h = `<section><h2>${esc(label(m))}
+    <span class="tag ${m.ok?'ok':'bad'}">${m.ok?'数据到手':'空/被拦'}</span>
+    <span class="tag">${m.count} 条</span>
+    ${m.robots?`<span class="tag sm">robots ${esc(m.robots)}</span>`:''}
+    ${m.quality_summary?`<span class="tag sm" title="${esc(m.quality_summary)}">${esc(short(m.quality_summary))}</span>`:''}</h2>
+    <div class="sm mut">抓取 ${esc(m.fetched_at)}${m.source_url?` · 来源 ${extLink(m.source_url, m.source_url)}`:''}</div>
+    <div class="hint sm">指标口径：${Object.entries(b.legend.labels).map(([k,v])=>`${esc(v)}`).join('， ')||'无'}</div>
+    <div style="margin-top:8px">对比基准：<select onchange="setBase(this.value)">
+        <option value="">不对比</option>${opts}</select>
+      ${base!=null && !sameSeries.length ? '<span class="tag warn sm">无可比对象</span>' : ''}</div>
+    ${base==null && !sameSeries.length
+      ? `<div class="note sm">这个平台<b>只有一份快照</b>，没有时间趋势；也没有第二张榜可对比。
+         再跑一次 sweep（同日覆盖、跨日各留一份）就有了。</div>` : ''}
+    ${m.problems&&m.problems.length?`<div class="note sm">问题：${m.problems.map(esc).join('； ')}</div>`:''}
+  </section>`;
+
+  h += `<section><h2>题材分布</h2><div class="scroll"><table><thead><tr>
+    <th>题材</th><th>本数</th><th style="width:26%">占比</th><th>最好名次</th></tr></thead><tbody>`;
+  a.categories.forEach(c=>{
+    h += `<tr><td>${esc(c.category)}</td><td class="num">${c.count}</td>
+      <td><div class="bar"><i style="width:${(c.ratio*100).toFixed(1)}%"></i></div>
+          <span class="sm mut">${(c.ratio*100).toFixed(1)}%</span></td>
+      <td class="num">#${c.best_rank}</td></tr>`;
+  });
+  h += '</tbody></table></div></section>';
+
+  h += `<section><h2>热词</h2>`;
+  if(a.title_keywords.length){
+    h += `<div class="sm mut" style="margin-bottom:6px">书名片段（二元组，出现≥2 次）</div>`
+      + a.title_keywords.slice(0,30).map(k=>`<span class="chip">${esc(k.w)} <b class="mut">${k.n}</b></span>`).join('');
+  } else if(a.skipped_for_keywords>0){
+    h += `<div class="note">书名热词<b>未统计</b>：${a.skipped_for_keywords}/${a.sample_size} 条书名被字体混淆。
+      拿乱码算词频会得到根本不存在的规律。</div>`;
+  }
+  if(a.tag_keywords.length){
+    h += `<div class="sm mut" style="margin:10px 0 6px">子分类标签</div>`
+      + a.tag_keywords.slice(0,30).map(k=>`<span class="chip">${esc(k.w)} <b class="mut">${k.n}</b></span>`).join('');
+  }
+  if(a.word_range) h += `<div class="sm mut" style="margin-top:10px">字数区间：${wan(a.word_range[0])} ~ ${wan(a.word_range[1])}
+    ${a.obfuscated?` · 书名混淆 ${a.obfuscated}/${a.sample_size} 条（指标仍可用）`:''}</div>`;
+  h += `</section>`;
+
+  const tr = trendsFor();
+  if(tr){
+    const rows = tr.rows;
+    const cnt = f => rows.filter(f).length;
+    h += `<section><h2>差分 <span class="tag sm">基准：${esc(tr.base_label)}</span>
+      ${tr.same_series?'<span class="tag ok sm">同系列，可当时间趋势读</span>'
+                      :'<span class="tag warn sm">不是同一系列 —— 只是两榜差异，别当趋势</span>'}</h2>
+      <div class="cards">
+        <div class="card"><b class="up">${cnt(t=>t.new)}</b><span>新上榜</span></div>
+        <div class="card"><b class="up">${cnt(t=>!t.new&&!t.gone&&t.chg>0)}</b><span>排名上升</span></div>
+        <div class="card"><b class="down">${cnt(t=>!t.new&&!t.gone&&t.chg<0)}</b><span>排名下降</span></div>
+        <div class="card"><b class="down">${cnt(t=>t.gone)}</b><span>已掉榜</span></div></div>
+      <div class="scroll"><table><thead><tr><th>书名</th><th>基准</th><th>本次</th><th>变化</th><th class="num">跃升分</th></tr></thead><tbody>`;
+    rows.slice(0,80).forEach(t=>{
+      const name = t.obf ? `<span class="obf">${esc(t.title)}〔名待补〕</span>` : esc(t.title);
+      h += `<tr><td>${name}</td><td class="num">${t.prev?'#'+t.prev:'—'}</td>
+        <td class="num">${t.curr?'#'+t.curr:'掉榜'}</td>
+        <td>${t.new?'<span class="tag ok sm">新上</span>':t.gone?'<span class="tag bad sm">掉榜</span>':delta(t.chg)}</td>
+        <td class="num">${t.jump}</td></tr>`;
+    });
+    h += '</tbody></table></div></section>';
+  }
+
+  h += `<section><h2>榜单明细</h2><div class="scroll"><table><thead><tr>
+    <th style="width:44px">#</th><th>书名</th><th>作者</th><th>题材</th><th>指标</th><th>备注</th></tr></thead><tbody>`;
+  b.entries.forEach((e,ei)=>{
+    const notes=[];
+    if(e.extra?.indexChange) notes.push('榜变 '+esc(e.extra.indexChange));
+    if(e.extra?.rankPosDiff!=null) notes.push('API变化 '+esc(e.extra.rankPosDiff));
+    if(e.extra?.status) notes.push(esc(e.extra.status));
+    if(e.extra?.creationStatus) notes.push(e.extra.creationStatus==='0'?'完结':'连载');
+    if(e.extra?.intro) notes.push(`<span class="mut">${esc(e.extra.intro)}</span>`);
+    // ★ 书名加 data-bk，点击由**事件委托**处理（不用内联 onclick）
+    h += `<tr><td class="num">${e.rank}</td>
+      <td><span class="bklink" data-bk="${ei}" title="点一下看详情（不跳出本页）">${titleCell(e)}</span>${
+        extLink(e.url, '↗', 'sm') ? ' ' + extLink(e.url, '↗', 'sm') : ''}</td>
+      <td class="sm">${esc(e.author||'-')}</td>
+      <td class="sm">${esc(e.category||'-')}${e.tags&&e.tags.length?`<div class="sm mut">${e.tags.map(esc).join('/')}</div>`:''}</td>
+      <td class="num">${metricCells(e.metrics,b.legend)}</td>
+      <td class="sm" style="max-width:420px">${notes.join(' · ')||'-'}</td></tr>`;
+  });
+  h += '</tbody></table></div></section>';
+  $('main').innerHTML = h;
+}
+
+function setBase(v){ base = v===''?null:(+v); render(); }
+function delta(n){ return (n==null||n===0)?'<span class="flat">→</span>'
+  : (n>0?`<span class="up">↑ +${n}</span>`:`<span class="down">↓ ${n}</span>`); }
+function short(s){ return s.length>52?s.slice(0,52)+'…':s; }
+
+$('hstat').textContent = `${D.count} 份快照 · ${D.sources.map(s=>`${s.name}${s.books}`).join(' / ')} 本 · 生成于 ${D.generated_at.slice(0,16).replace('T',' ')}`;
+renderSide();
+showOverview();
+
+// 点书名 → 开详情面板；点头部按钮 → 概览 / 导出；点关闭、遮罩、ESC → 关。
+//
+// ★ 事件委托而不是内联 onclick：内联处理器会逼 CSP 开 unsafe-inline。
+document.addEventListener('click', ev=>{
+  const t = ev.target;
+  if(!t || !t.closest) return;
+  if(t.closest('[data-bkclose]')){ closeBook(); return; }
+  const act = t.closest('[data-act]');
+  if(act){
+    if(act.dataset.act === 'csv') exportCurrentCsv();
+    else if(act.dataset.act === 'overview') showOverview();
+    return;
+  }
+  const el = t.closest('.bklink');
+  if(el){ showBook(Number(el.dataset.bk)); return; }
+  if(t.id === 'bk') closeBook();
+});
+document.addEventListener('keydown', ev=>{ if(ev.key === 'Escape') closeBook(); });
+</script>
+</body>
+</html>
