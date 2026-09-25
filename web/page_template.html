@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>网文扫榜 · 数据页</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--panel2:#1f2430;--line:#2b3140;--fg:#e6e8ee;
+        --dim:#8b94a7;--acc:#5ac8fa;--ok:#3ddc84;--warn:#ffb454;--bad:#ff6b6b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  header{position:sticky;top:0;z-index:5;background:rgba(15,17,21,.94);backdrop-filter:blur(6px);
+         border-bottom:1px solid var(--line);padding:11px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  .stat{color:var(--dim);font-size:12px}
+  button,select{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+                border-radius:6px;padding:5px 10px;font:inherit;cursor:pointer}
+  button:hover{border-color:var(--acc)}
+  layout{display:flex;align-items:flex-start}
+  aside{width:280px;flex:0 0 280px;border-right:1px solid var(--line);padding:12px;
+        max-height:calc(100vh - 54px);overflow:auto;position:sticky;top:54px}
+  main{flex:1;padding:18px 22px;min-width:0}
+  .grp{margin-bottom:14px}
+  .grp h3{margin:0 0 6px;font-size:12px;color:var(--dim);letter-spacing:.5px}
+  .item{padding:6px 8px;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;
+        gap:8px;align-items:baseline;border:1px solid transparent}
+  .item:hover{background:var(--panel)}
+  .item.on{background:var(--panel2);border-color:var(--acc)}
+  .item .n{color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 14px}
+  .card b{font-size:22px;display:block;font-variant-numeric:tabular-nums}
+  .card span{color:var(--dim);font-size:12px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 16px;margin-bottom:14px}
+  section h2{margin:0 0 10px;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .tag{font-size:11px;padding:2px 7px;border-radius:99px;border:1px solid var(--line);color:var(--dim)}
+  .tag.ok{color:var(--ok);border-color:var(--ok)} .tag.warn{color:var(--warn);border-color:var(--warn)}
+  .tag.bad{color:var(--bad);border-color:var(--bad)} .tag.acc{color:var(--acc);border-color:var(--acc)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:12px}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr:hover td{background:rgba(90,200,250,.05)}
+  .bar{height:7px;background:var(--panel2);border-radius:4px;overflow:hidden;min-width:60px}
+  .bar>i{display:block;height:100%;background:var(--acc)}
+  .chip{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:99px;
+        padding:2px 9px;margin:0 6px 6px 0;font-size:12px}
+  .mut{color:var(--dim)} .sm{font-size:12px} .obf{color:var(--warn)}
+  .note{background:rgba(255,180,84,.08);border-left:3px solid var(--warn);padding:8px 12px;
+        border-radius:0 6px 6px 0;margin:10px 0;font-size:12.5px}
+  .hint{background:rgba(90,200,250,.08);border-left:3px solid var(--acc);padding:8px 12px;
+        border-radius:0 6px 6px 0;margin:10px 0;font-size:12.5px}
+  .up{color:var(--ok)} .down{color:var(--bad)} .flat{color:var(--dim)}
+  .scroll{overflow-x:auto} a{color:var(--acc)}
+  @media(max-width:860px){aside{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>网文扫榜</h1>
+  <span class="tag acc">单文件页 · 数据已内嵌</span>
+  <span class="stat" id="hstat"></span>
+  <span style="flex:1"></span>
+  <button onclick="showOverview()">概览</button>
+  <span class="stat">要换新数据：跑一次 开始.cmd 选 1</span>
+</header>
+<layout><aside id="side"></aside><main id="main"></main></layout>
+<script id="rankdata" type="application/json">__DATA__</script>
+<script>
+const D = JSON.parse(document.getElementById('rankdata').textContent);
+let cur = null, base = null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const wan = n => n==null?'-':(n>=10000?(n/10000).toFixed(1)+'万':n);
+const meta = i => D.snapshots[i].meta;
+const label = m => `${m.source==='qidian'?'起点':m.source==='fanqie'?'番茄':m.source==='qimao'?'七猫':m.source==='jjwxc'?'晋江':m.source}`
+  + ` · ${m.board}${m.category?' · '+m.category:''} · ${m.date}`;
+
+function metricCells(m, legend){
+  const parts = Object.entries(m||{}).map(([k,v]) => {
+    const l = legend.labels[k] || k;
+    return k==='words'
+      ? `<span class="mut" title="${esc(l)}">${esc(l.replace(/（.*/,''))} ${wan(v)}</span>`
+      : `${esc(l.replace(/（.*/,''))} <b>${wan(v)}</b>`;
+  });
+  return parts.join(' · ') || '<span class="mut">-</span>';
+}
+const titleCell = e => e.title_obfuscated
+  ? `<span class="obf" title="书名被字体反爬混淆（指标仍是明文）">${esc(e.title)}〔名待补〕</span>`
+  : esc(e.title);
+
+function renderSide(){
+  const groups = {};
+  D.snapshots.forEach((b,i)=>{ (groups[b.meta.source] ??= []).push([b.meta,i]); });
+  let h = '';
+  for(const [src,list] of Object.entries(groups)){
+    const name = list[0][0] ? label(list[0][0]).split(' · ')[0] : src;
+    h += `<div class="grp"><h3>${esc(name)} · ${list.length} 份</h3>`;
+    h += list.map(([m,i])=>{
+      const on = cur===i?' on':'';
+      return `<div class="item${on}" data-i="${i}">
+        <span>${esc(m.board)}${m.category?' · '+esc(m.category):''}
+          <div class="n sm mut">${m.date}${m.ok?'':' ⚠'}</div></span>
+        <span class="n">${m.count}</span></div>`;
+    }).join('') + '</div>';
+  }
+  $('side').innerHTML = h;
+  $('side').querySelectorAll('.item').forEach(el=>el.onclick=()=>show(+el.dataset.i));
+}
+
+function showOverview(){
+  cur = null; renderSide();
+  let h = `<section><h2>本轮总览 <span class="tag">${D.count} 份快照</span></h2>
+    <div class="cards">` + D.sources.map(s=>
+      `<div class="card"><b>${s.books}</b><span>${esc(s.name)} · ${s.snapshots} 份 · ${s.ok} 份有数据</span></div>`).join('') +
+    `</div><div class="note">${esc(D.metrics_warning)}</div>
+     <div class="sm mut">生成时间 ${esc(D.generated_at)}</div></section>`;
+
+  for(const [src,list] of Object.entries(D.overview.per_source)){
+    const total = list.reduce((a,b)=>a+b.count,0)||1;
+    h += `<section><h2>${esc(D.sources.find(s=>s.source===src)?.name||src)} 题材分布
+      <span class="tag sm">按平台各自统计</span></h2>
+      <div class="scroll"><table><thead><tr><th>题材</th><th>出现次数</th>
+      <th style="width:26%">占比</th><th>最好名次</th><th class="num">平均字数</th></tr></thead><tbody>`;
+    list.slice(0,14).forEach(c=>{
+      const pct = c.count/total*100;
+      h += `<tr><td>${esc(c.category)}</td><td class="num">${c.count}</td>
+        <td><div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div><span class="sm mut">${pct.toFixed(1)}%</span></td>
+        <td class="num">#${c.best_rank}</td><td class="num">${wan(c.avg_words)}</td></tr>`;
+    });
+    h += '</tbody></table></div></section>';
+  }
+
+  const cb = D.overview.cross_board_books;
+  if(cb.length){
+    h += `<section><h2>同时出现在多个榜的书 <span class="tag acc">跨榜信号</span></h2>
+      <div class="sm mut" style="margin-bottom:8px">一本书记越多榜，越可能是真在被推着走，而不是单榜噪声。</div>
+      <div class="scroll"><table><thead><tr><th>书名</th><th>榜数</th><th>出现在哪些榜</th></tr></thead><tbody>`;
+    cb.forEach(b=>{
+      const t = b.obf ? `<span class="obf">${esc(b.title)}〔名待补〕</span>` : esc(b.title);
+      h += `<tr><td>${t}</td><td class="num">${new Set(b.boards).size}</td>
+            <td class="sm mut">${b.boards.map(esc).join('； ')}</td></tr>`;
+    });
+    h += '</tbody></table></div></section>';
+  }
+  if(D.bad_files.length)
+    h += `<section><h2>解析失败的文件</h2><pre>${esc(D.bad_files.join('\n'))}</pre></section>`;
+  $('main').innerHTML = h;
+}
+
+function show(i){
+  cur = i; base = null; renderSide(); render();
+}
+
+function trendsFor(){
+  if(base==null) return null;
+  // ★ 对比键用 meta.id（不是数组下标）—— 下标只在渲染时排序用，会随快照增减而变
+  return (D.comparisons[`${m_id(cur)}|${base}`] || null);
+}
+const m_id = i => D.snapshots[i].meta.id;
+
+function render(){
+  const b = D.snapshots[cur], m = b.meta, a = b.analysis;
+  const sameSeries = D.snapshots.map((x,idx)=>[x,idx])
+    .filter(([x])=>x.meta.source===m.source && x.meta.id!==m.id);
+  const opts = sameSeries.map(([x])=>
+    `<option value="${x.meta.id}" ${base===x.meta.id?'selected':''}>${esc(label(x.meta))}`
+    + (x.meta.series_key===m.series_key?'（同系列，可当趋势）':'（另一张榜，不是趋势）')+'</option>').join('');
+
+  let h = `<section><h2>${esc(label(m))}
+    <span class="tag ${m.ok?'ok':'bad'}">${m.ok?'数据到手':'空/被拦'}</span>
+    <span class="tag">${m.count} 条</span>
+    ${m.robots?`<span class="tag sm">robots ${esc(m.robots)}</span>`:''}
+    ${m.quality_summary?`<span class="tag sm" title="${esc(m.quality_summary)}">${esc(short(m.quality_summary))}</span>`:''}</h2>
+    <div class="sm mut">抓取 ${esc(m.fetched_at)}${m.source_url?` · 来源 <a href="${esc(m.source_url)}" target="_blank">${esc(m.source_url)}</a>`:''}</div>
+    <div class="hint sm">指标口径：${Object.entries(b.legend.labels).map(([k,v])=>`${esc(v)}`).join('， ')||'无'}</div>
+    <div style="margin-top:8px">对比基准：<select onchange="setBase(this.value)">
+        <option value="">不对比</option>${opts}</select>
+      ${base!=null && !sameSeries.length ? '<span class="tag warn sm">无可比对象</span>' : ''}</div>
+    ${base==null && !sameSeries.length
+      ? `<div class="note sm">这个平台<b>只有一份快照</b>，没有时间趋势；也没有第二张榜可对比。
+         再跑一次 sweep（同日覆盖、跨日各留一份）就有了。</div>` : ''}
+    ${m.problems&&m.problems.length?`<div class="note sm">问题：${m.problems.map(esc).join('； ')}</div>`:''}
+  </section>`;
+
+  h += `<section><h2>题材分布</h2><div class="scroll"><table><thead><tr>
+    <th>题材</th><th>本数</th><th style="width:26%">占比</th><th>最好名次</th></tr></thead><tbody>`;
+  a.categories.forEach(c=>{
+    h += `<tr><td>${esc(c.category)}</td><td class="num">${c.count}</td>
+      <td><div class="bar"><i style="width:${(c.ratio*100).toFixed(1)}%"></i></div>
+          <span class="sm mut">${(c.ratio*100).toFixed(1)}%</span></td>
+      <td class="num">#${c.best_rank}</td></tr>`;
+  });
+  h += '</tbody></table></div></section>';
+
+  h += `<section><h2>热词</h2>`;
+  if(a.title_keywords.length){
+    h += `<div class="sm mut" style="margin-bottom:6px">书名片段（二元组，出现≥2 次）</div>`
+      + a.title_keywords.slice(0,30).map(k=>`<span class="chip">${esc(k.w)} <b class="mut">${k.n}</b></span>`).join('');
+  } else if(a.skipped_for_keywords>0){
+    h += `<div class="note">书名热词<b>未统计</b>：${a.skipped_for_keywords}/${a.sample_size} 条书名被字体混淆。
+      拿乱码算词频会得到根本不存在的规律。</div>`;
+  }
+  if(a.tag_keywords.length){
+    h += `<div class="sm mut" style="margin:10px 0 6px">子分类标签</div>`
+      + a.tag_keywords.slice(0,30).map(k=>`<span class="chip">${esc(k.w)} <b class="mut">${k.n}</b></span>`).join('');
+  }
+  if(a.word_range) h += `<div class="sm mut" style="margin-top:10px">字数区间：${wan(a.word_range[0])} ~ ${wan(a.word_range[1])}
+    ${a.obfuscated?` · 书名混淆 ${a.obfuscated}/${a.sample_size} 条（指标仍可用）`:''}</div>`;
+  h += `</section>`;
+
+  const tr = trendsFor();
+  if(tr){
+    const rows = tr.rows;
+    const cnt = f => rows.filter(f).length;
+    h += `<section><h2>差分 <span class="tag sm">基准：${esc(tr.base_label)}</span>
+      ${tr.same_series?'<span class="tag ok sm">同系列，可当时间趋势读</span>'
+                      :'<span class="tag warn sm">不是同一系列 —— 只是两榜差异，别当趋势</span>'}</h2>
+      <div class="cards">
+        <div class="card"><b class="up">${cnt(t=>t.new)}</b><span>新上榜</span></div>
+        <div class="card"><b class="up">${cnt(t=>!t.new&&!t.gone&&t.chg>0)}</b><span>排名上升</span></div>
+        <div class="card"><b class="down">${cnt(t=>!t.new&&!t.gone&&t.chg<0)}</b><span>排名下降</span></div>
+        <div class="card"><b class="down">${cnt(t=>t.gone)}</b><span>已掉榜</span></div></div>
+      <div class="scroll"><table><thead><tr><th>书名</th><th>基准</th><th>本次</th><th>变化</th><th class="num">跃升分</th></tr></thead><tbody>`;
+    rows.slice(0,80).forEach(t=>{
+      const name = t.obf ? `<span class="obf">${esc(t.title)}〔名待补〕</span>` : esc(t.title);
+      h += `<tr><td>${name}</td><td class="num">${t.prev?'#'+t.prev:'—'}</td>
+        <td class="num">${t.curr?'#'+t.curr:'掉榜'}</td>
+        <td>${t.new?'<span class="tag ok sm">新上</span>':t.gone?'<span class="tag bad sm">掉榜</span>':delta(t.chg)}</td>
+        <td class="num">${t.jump}</td></tr>`;
+    });
+    h += '</tbody></table></div></section>';
+  }
+
+  h += `<section><h2>榜单明细</h2><div class="scroll"><table><thead><tr>
+    <th style="width:44px">#</th><th>书名</th><th>作者</th><th>题材</th><th>指标</th><th>备注</th></tr></thead><tbody>`;
+  b.entries.forEach(e=>{
+    const notes=[];
+    if(e.extra?.indexChange) notes.push('榜变 '+esc(e.extra.indexChange));
+    if(e.extra?.rankPosDiff!=null) notes.push('API变化 '+esc(e.extra.rankPosDiff));
+    if(e.extra?.status) notes.push(esc(e.extra.status));
+    if(e.extra?.creationStatus) notes.push(e.extra.creationStatus==='0'?'完结':'连载');
+    if(e.extra?.intro) notes.push(`<span class="mut">${esc(e.extra.intro)}</span>`);
+    h += `<tr><td class="num">${e.rank}</td>
+      <td>${titleCell(e)}${e.url?` <a class="sm" href="${esc(e.url)}" target="_blank">↗</a>`:''}</td>
+      <td class="sm">${esc(e.author||'-')}</td>
+      <td class="sm">${esc(e.category||'-')}${e.tags&&e.tags.length?`<div class="sm mut">${e.tags.map(esc).join('/')}</div>`:''}</td>
+      <td class="num">${metricCells(e.metrics,b.legend)}</td>
+      <td class="sm" style="max-width:420px">${notes.join(' · ')||'-'}</td></tr>`;
+  });
+  h += '</tbody></table></div></section>';
+  $('main').innerHTML = h;
+}
+
+function setBase(v){ base = v===''?null:(+v); render(); }
+function delta(n){ return (n==null||n===0)?'<span class="flat">→</span>'
+  : (n>0?`<span class="up">↑ +${n}</span>`:`<span class="down">↓ ${n}</span>`); }
+function short(s){ return s.length>52?s.slice(0,52)+'…':s; }
+
+$('hstat').textContent = `${D.count} 份快照 · ${D.sources.map(s=>`${s.name}${s.books}`).join(' / ')} 本 · 生成于 ${D.generated_at.slice(0,16).replace('T',' ')}`;
+renderSide();
+showOverview();
+</script>
+</body>
+</html>

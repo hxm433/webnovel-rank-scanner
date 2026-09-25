@@ -1,0 +1,26 @@
+# ── .cmd 脚本必须**逐字节**原样进出 ──
+#
+# `build_exe.cmd` 是 **GBK** 编码的（不是 UTF-8）。这不是疏忽，是必须的：
+# cmd.exe 按当前代码页（简体中文 Windows 上是 936/GBK）读脚本，
+# 存成 UTF-8 的话注释里的中文会变乱码，其中的括号会**截断 if 语句块**，
+# 于是报一堆"不是内部或外部命令"（README 里记着这个坑）。
+#
+# 所以这里标成 `-text`（不做任何行尾/编码转换）：
+# 否则 git 的 autocrlf 在某些 checkout 配置下会改动字节，
+# 而"改了字节的 .cmd"表现为脚本莫名执行失败，很难往编码上想。
+*.cmd -text -diff
+
+# ── .sh 脚本必须**永远是 LF** ──
+#
+# 与上面那条正好相反：shell 不认 CRLF。shebang 行尾多一个 `\r` 就是
+# "bash: ./x.sh: /usr/bin/env: bad interpreter"，或者命令名后面莫名带个字符。
+# 所以强制 `eol=lf`，不管 checkout 侧的 autocrlf 怎么设。
+*.sh text eol=lf
+
+# ── 二进制资源 ──
+*.ttf binary
+*.png binary
+*.exe binary
+*.aot binary
+*.dill binary
+*.ico binary
