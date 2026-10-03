@@ -24,7 +24,7 @@
 
 | 下载                                                                                                                              | 说明                 |
 | ------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| **[网文扫榜工具 v1.0（Windows x64）](https://github.com/hxm433/webnovel-rank-scanner/releases/download/v1.0/webnovel-rank-scanner-v1.0.zip)** | 解压后双击 `网文扫榜工具.exe` |
+| **[网文扫榜工具 v1.0.1（Windows x64）](https://github.com/hxm433/webnovel-rank-scanner/releases/download/v1.0.1/webnovel-rank-scanner-v1.0.1.zip)** | 解压后双击 `网文扫榜工具.exe` |
 
 也可以从 [**Releases 页面**](https://github.com/hxm433/webnovel-rank-scanner/releases/latest) 下载（那里有每个版本的说明）。
 包内三个文件：`网文扫榜工具.exe`（主程序）、`启动.cmd`、`使用说明.md`。
