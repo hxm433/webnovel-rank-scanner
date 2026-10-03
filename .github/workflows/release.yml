@@ -1,0 +1,54 @@
+# 推送 `v*` 标签时，自动创建 Release 并把发布包传上去。
+#
+# ★ 为什么用 Actions 而不是在本地调 API：
+#   Actions 里 `${{ github.token }}` 是**仓库自带的**短期令牌（`contents: write` 就够），
+#   不需要任何人在本地配 PAT —— 推一个标签就出 Release。
+#
+# ★ 发布包从仓库里的 `release/*.zip` 取（那个 zip 是本地打好、并用标准库
+#   独立校验过 CRC 与逐字节一致的），所以这里**不重新编译** ——
+#   保证"Release 里的东西"和"仓库里那份"是同一个文件。
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发版的标签（例如 v1.0）'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 检查发布包存在
+        run: |
+          set -e
+          ls -la release/
+          # 至少要有一个 zip，否则这次发版没有可下载的东西
+          ls release/*.zip >/dev/null
+
+      - name: 生成 Release（含发布包）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "发版标签：$TAG"
+          # 已存在就先删掉，保证可重复执行
+          gh release delete "$TAG" --yes --cleanup-tag=false || true
+          gh release create "$TAG" \
+            release/*.zip \
+            --title "$TAG" \
+            --notes-file release/RELEASE_NOTES.md
+          echo "完成："
+          gh release view "$TAG" --json url,assets \
+            --template '{{.url}}{{"\n"}}{{range .assets}}  {{.name}}  {{.size}} 字节{{"\n"}}{{end}}'
