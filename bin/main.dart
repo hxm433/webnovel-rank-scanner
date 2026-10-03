@@ -13,6 +13,9 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import '../lib/png.dart';
+import '../lib/guard.dart';
+import '../lib/sources.dart';
+import '../lib/webview_fetcher.dart';
 import '../lib/ui/app.dart';
 import '../lib/ui/gdi.dart';
 import '../lib/ui/main_window.dart';
@@ -36,6 +39,14 @@ void main(List<String> args) {
   //   在**发布版 exe 里**往「打开」按钮真投递一次左键消息，把结果写进日志。
   //   离屏自检证明不了这一段 —— 它绕过窗口消息循环，直接调 onClick。
   String? clickLogPath;
+  // ★ 自检模式：`--selftest-render=<日志路径>`
+  //
+  //   实测"浏览器渲染通道"到底能不能用 —— 用户报"起点只能扫前 20 条"
+  //   就是这条通道没走通、降级到移动站了。
+  //   ★ 必须在**打包好的 exe** 里跑：`dart run` 起不了子进程，
+  //     测出来的"不可用"是沙箱造成的假象。
+  String? renderLog;
+
   // ★ 自检模式：`--selftest-open-scan=<日志路径> [--selftest-after=3500]`
   //
   //   开一次「扫榜设置」，然后把**当时所有顶层窗口**的（类名 / 标题 / 是否可见）
@@ -67,6 +78,8 @@ void main(List<String> args) {
       clickLogPath = a.substring('--selftest-click-link='.length);
     } else if (a.startsWith('--debug-hittest=')) {
       hitTestDebugPath = a.substring('--debug-hittest='.length);
+    } else if (a.startsWith('--selftest-render=')) {
+      renderLog = a.substring('--selftest-render='.length);
     } else if (a.startsWith('--selftest-open-scan=')) {
       openScanLog = a.substring('--selftest-open-scan='.length);
     } else if (a.startsWith('--selftest-wait-click=')) {
@@ -173,6 +186,10 @@ void main(List<String> args) {
     }));
     return;
   }
+  if (renderLog != null) {
+    unawaited(_selfRender(renderLog).then((_) => exit(0)));
+    return;
+  }
   if (openScanLog != null) {
     unawaited(_selfOpenScan(win, openScanLog, afterMs).then((_) {
       exit(0);
@@ -190,6 +207,7 @@ void main(List<String> args) {
 /// 命令行用法错误：打印用法后退码 2（与"启动失败 255"区分开）。
 Never _usageExit() {
   stderr.writeln('用法：扫榜工具 [输出目录] [选项]');
+  stderr.writeln('  --selftest-render=<路径>      自检：实测浏览器渲染通道（起点多页靠它）');
   stderr.writeln('  --selftest-open-scan=<路径>   自检：开扫榜设置并 dump 顶层窗口清单');
   stderr.writeln('  --selftest-shot=<png路径>     自检截图输出路径（空串=未给）');
   stderr.writeln('  --selftest-size=<宽>x<高>      自检客户区尺寸（宽高均须 >= 200）');
@@ -588,4 +606,61 @@ int _enumCb(int hwnd, int lparam) {
   final mine = hwnd == _enumMark ? '  ← 本进程主窗口' : '';
   sink.writeln('  [$hwnd] $cls | $title$mine');
   return 1;
+}
+
+/// 自检：实测浏览器渲染通道（起点 www 站多页**全靠它**）。
+///
+/// 用户报"起点只能扫前 20 条" = 降级到移动站了。原因只可能是两类：
+///   ① `renderer.available == false`（没找到 msedge.exe）；
+///   ② 找得到，但渲染失败（headless 起不来 / 页面结构变了 / 被 WAF 挡）。
+/// 这个自检把两类**分开报**，并给一次**真实渲染**的结果。
+Future<void> _selfRender(String logPath) async {
+  final f = File(logPath);
+  final sb = StringBuffer();
+  void w(String s) {
+    sb.writeln(s);
+    f.writeAsStringSync(sb.toString(), flush: true);
+  }
+
+  try {
+    // 渲染器要白名单 / robots / 限速三件套（与正式路径同一套类型）
+    final r = WebViewFetcher(
+      whitelist: DomainWhitelist(const [
+        'www.qidian.com', 'qidian.com', 'm.qidian.com', 'qdfepccdn.qidian.com',
+      ]),
+      robots: RobotsGuard(),
+      limiter: RateLimiter(),
+    );
+    w('renderer.available = ${r.available}');
+    w('renderer.exePath   = ${r.exePath ?? "(没找到)"}');
+    w('WebView2 版本      = ${r.webView2Version() ?? "(没装)"}');
+    w('');
+    if (!r.available) {
+      w('[FAIL] 找不到 msedge.exe —— 起点只能降级到移动站（每榜 20 条）');
+      w('       探测过：ProgramFiles(x86) / ProgramFiles / LOCALAPPDATA 下的');
+      w('       Microsoft\\Edge\\Application\\msedge.exe');
+      return;
+    }
+    // 真实渲染一次起点榜单第 1 页
+    final url = Uri.parse('https://www.qidian.com/rank/yuepiao/');
+    w('渲染 $url …');
+    final sw = Stopwatch()..start();
+    final rp = await r.render(url);
+    sw.stop();
+    w('  ok=${rp.ok}  耗时=${sw.elapsedMilliseconds}ms  html=${rp.html.length} 字节');
+    if (!rp.ok) {
+      w('  error = ${rp.error}');
+      w('[FAIL] 渲染失败 —— 会降级到移动站（每榜 20 条）');
+      return;
+    }
+    w('[OK] 渲染成功');
+    // 数一下页面里有多少"榜单行"（用与正式解析同一套正则）
+    final cnt = QidianSource.debugRowCount(rp.html);
+    w('  解析到榜单行：$cnt 条（第 1 页应为 20）');
+    if (cnt == 0) {
+      w('[FAIL] 渲染成功但一行都没解析出来 —— 页面结构可能已改版');
+    }
+  } on Object catch (e, st) {
+    w('[EXC] $e\n$st');
+  }
 }

@@ -217,7 +217,23 @@ class WebViewFetcher {
         '${tmp.path}${Platform.pathSeparator}wbscan_${DateTime.now().microsecondsSinceEpoch}');
     try {
       profile.createSync(recursive: true);
-      return await _dumpDom(url, profile, budgetMs, timeout);
+      final first = await _dumpDom(url, profile, budgetMs, timeout);
+      // ★★ 空 DOM 时**换一个全新 profile 重试一次**。
+      //
+      //   实测：浏览器"起来了但什么都没输出（exit=0）"，最典型的原因是
+      //   它把这次请求**交接给了另一个已在运行的实例**、自己立刻退出。
+      //   这种情况常常是**瞬时的**，换一个 profile 再来一次就能拿到 DOM。
+      //   代价是这一榜多花一次渲染时间 —— 比"少 480 条数据"便宜得多。
+      if (first.ok || first.html.isNotEmpty) return first;
+      _quietDelete(profile);
+      final retry = Directory(
+          '${tmp.path}${Platform.pathSeparator}wbscan_r_${DateTime.now().microsecondsSinceEpoch}');
+      retry.createSync(recursive: true);
+      try {
+        return await _dumpDom(url, retry, budgetMs, timeout);
+      } finally {
+        _quietDelete(retry);
+      }
     } on Object catch (e) {
       return RenderedPage('', error: '$e');
     } finally {
@@ -296,7 +312,14 @@ class WebViewFetcher {
 
     final html = utf8.decode(out, allowMalformed: true);
     if (html.trim().isEmpty) {
-      return RenderedPage('', error: '浏览器产出空 DOM（exit=$code）');
+      // ★★ "exit=0 但什么都没输出" —— 这**不是**"浏览器没装"，
+      //   而是浏览器把这次请求**交接给了另一个已在运行的实例**、自己立刻退出。
+      //   最常见的触发条件是那个实例**以管理员身份运行**（UIPI 挡住交接），
+      //   所以这里把可能的原因直接写进错误里 —— 报告要能让人**照着修**。
+      return RenderedPage('',
+          error: '浏览器产出空 DOM（exit=$code）—— 它把请求交给了另一个已在运行的实例。'
+              '若浏览器是以管理员身份运行的，请改用普通权限重启它；'
+              '或把浏览器完全退出后再扫');
     }
     // ★ 与 HTTP 路径同样要过挑战页判定：如果拿回来的还是挑战壳，
     //   说明这条路也没放行 —— 如实报"仍是挑战页"，绝不返回半成品。

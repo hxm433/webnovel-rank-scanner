@@ -332,6 +332,12 @@ class QidianSource implements RankSourceAdapter {
   }
 
   /// 从 www 站页面切出每本书的行 HTML（<li data-rid="N">…</li>）。
+  /// 自检：数一页 HTML 里的榜单行数（**用与正式解析同一套正则**）。
+  ///
+  /// ★ 为什么要"同一套"：如果自检自己另写一个正则，那只证明"我写的这个对"，
+  ///   不能证明正式路径对。这里直接复用 [_reRows]。
+  static int debugRowCount(String html) => _reRows.allMatches(html).length;
+
   List<String> _webRows(String html) {
     final out = <String>[];
     for (final m in _reRows.allMatches(html)) {
@@ -439,18 +445,27 @@ class QidianSource implements RankSourceAdapter {
         ok: entries.isNotEmpty,
         validCount: entries.length,
         totalCount: entries.length,
+        // ★★ 原来这里无条件写"未检测到可用浏览器内核" —— 那是**谎报**：
+        //   实测（用户快照）浏览器明明找到了、也起来了（exit=0），
+        //   只是**产出空 DOM**。用户会照着这句去装一个已经装好的浏览器。
+        //   现在改成如实写"www 站这次为什么没走通"。
         summary: entries.isEmpty
             ? '未解析到 records'
             : '【降级】移动站单榜 ${entries.length} 条'
-                '（未检测到可用浏览器内核，无法走 www 站多页；pageData.total=$total）'
+                '（${_lastWebError == null ? "未检测到可用浏览器内核，无法走 www 站多页" : "www 站多页未走通"}'
+                '；pageData.total=$total）'
                 '${catFallback ? '；分类「$askedM」查不到，已按全站抓取' : ''}'
                 '；★ 移动站 records 不含连载/完结字段，本榜「备注」列会显示 `-`',
         problems: entries.isEmpty
             ? const ['未找到 pageContext.pageData.records，页面可能改版']
             : [
-                '降级路径每榜上限 20 条；装 Edge/WebView2 可抓到 500 条',
+                '降级路径每榜上限 20 条',
+                if (_lastWebError == null)
+                  '本机没找到浏览器内核（Edge/WebView2）—— 装上即可抓到 500 条'
+                else
+                  'www 站多页这次没走通（原因见下条）',
                 '移动站榜单不含「连载/完结」状态，备注列为 `-`'
-                    '（装 Edge/WebView2 走 www 站即可显示）',
+                    '（走 www 站即可显示）',
                 if (_lastWebError != null) 'www 站抓取失败原因：$_lastWebError',
               ],
       ),
