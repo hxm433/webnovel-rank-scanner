@@ -175,31 +175,49 @@ class QidianSource implements RankSourceAdapter {
     if (!boards.containsKey(q.board)) {
       return _badBoard(boards.keys, q.board);
     }
-    // ★ 优先"渲染抓取"（能用上 25 页 × 20 = 500 本）。
-    if (renderer.available) {
-      final r = await _fetchWeb(q);
-      if (r != null) return r;
-    }
-    // ★ 降级只走移动站真实支持的榜：`_mobileBoards` 只有 5 个，
-    //   其余榜以前会 `?? 'hotsales'` 静默换成畅销榜再按原榜名落盘 ——
-    //   错误数据比没有数据更糟（会进趋势/导出）。
-    if (!_mobileBoards.containsKey(q.board)) {
+    // ★★ 起点**只走 www 多页**（25 页 × 20 = 最多 500 本），**不降级**。
+    //
+    //   用户明确要求："路径恢复，不降级" ——
+    //   以前 www 失败会**静默降级**到移动站（每榜 20 条），
+    //   让人以为"起点这个榜就只有 20 条"，而不是"这次抓失败了"。
+    //   20 条冒充"全部"，比直接报错更糟：它会进趋势、进导出、进对比。
+    //
+    //   所以现在：抓不到就**如实报错**，把原因和排查方向写清楚。
+    //   （`_fetchMobile` 保留 —— 其他功能不变，只是默认不再自动调用它。）
+    if (!renderer.available) {
       return FetchOutcome(
         const [],
         RankQuality(
           ok: false,
           validCount: 0,
           totalCount: 0,
-          summary: '「${q.board}」移动站无对应榜单，且渲染通道不可用',
+          summary: '起点需要浏览器内核（Edge / WebView2）才能抓 www 站多页',
           problems: [
-            '该榜只有 www 站提供（需要 WebView2/Edge 渲染通道）。'
-                '当前可降级的移动站榜单：${_mobileBoards.keys.join('、')}',
+            '本机没找到浏览器内核 —— 装 Edge 或 WebView2 Runtime 后即可抓 500 条',
+            '（已按设置关闭"降级到移动站"：宁可报错，也不拿 20 条冒充全部）',
           ],
         ),
       );
     }
-    // 降级：移动站，每榜固定 20 条。
-    return _fetchMobile(q);
+    final web = await _fetchWeb(q);
+    if (web != null) return web;
+    // www 这条路没走通 —— **如实报错，不降级**。
+    return FetchOutcome(
+      const [],
+      RankQuality(
+        ok: false,
+        validCount: 0,
+        totalCount: 0,
+        summary: '起点 www 站多页抓取失败'
+            '（已按设置关闭降级：不会再退回移动站的 20 条）',
+        problems: [
+          if (_lastWebError != null) '失败原因：$_lastWebError',
+          '可以这样排查：① 把浏览器**完全退出**（含托盘图标）后再扫；'
+              '② 若浏览器是以管理员身份运行的，改用普通权限重启它；'
+              '③ 跑 `网文扫榜工具.exe --selftest-render=r.txt out` 看渲染通道自检结果',
+        ],
+      ),
+    );
   }
 
   /// www 站多页抓取。任何一步失败返回 null（由调用方降级），
@@ -429,6 +447,11 @@ class QidianSource implements RankSourceAdapter {
   }
 
   /// 降级路径：移动站 SSR（每榜固定 20 条，无翻页）。
+  // ★ 移动站抓取**保留但不再自动调用**（用户要求"不降级"）：
+  //   留着是因为它是一段**完整可用**的能力（那 5 个只有移动站有的榜、
+  //   以及将来要"手动切移动站"时直接就能用），删掉反而要重写。
+  //   加 ignore 是为了让分析器保持零警告 —— 它现在确实没人调用。
+  // ignore: unused_element
   Future<FetchOutcome> _fetchMobile(RankQuery q) async {
     final catId = q.categoryId ?? _mobileCategories[q.categoryName] ?? '-1';
     final askedM = q.categoryName;
