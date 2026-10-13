@@ -13,6 +13,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'models.dart';
+import 'utils.dart' as utils;
+
+const int _maxAttachmentBytes = 20 * 1024 * 1024;
 
 /// 索引里的一条快照记录。
 class IndexEntry {
@@ -500,11 +503,15 @@ class SnapshotIndexFile {
     if (srcPath == null && bytes == null) {
       throw ArgumentError('importImage 需要 srcPath 或 bytes 之一');
     }
+    final sizeBytes = bytes != null ? bytes.length : (srcPath == null ? 0 : File(srcPath).lengthSync());
+    if (sizeBytes > _maxAttachmentBytes) {
+      throw StateError('附件过大：${sizeBytes}B > ${_maxAttachmentBytes}B');
+    }
     final dir = Directory(attachmentDir(e))..createSync(recursive: true);
     final nameSrc = preferName ?? _baseName(srcPath!);
     final base = _safe(_stemOf(nameSrc));
     // ★ 扩展名必须白名单化：`_extOf` 原样截取最后一个 '.' 之后的内容，
-    //   若来源名形如 `x../y`，会带出路径分隔符 → 写到附件目录之外。
+    //   若来源名形如 `x../y`，会带出路径分隔�� → 写到附件目录之外。
     var ext = _extOf(nameSrc);
     if (!RegExp(r'^\.[A-Za-z0-9]{1,8}$').hasMatch(ext)) {
       ext = _extFromBytes(bytes) ?? '.png';
@@ -516,10 +523,14 @@ class SnapshotIndexFile {
       n++;
     }
     final dst = '${dir.path}${Platform.pathSeparator}$name';
-    if (bytes != null) {
-      File(dst).writeAsBytesSync(bytes, flush: true);
-    } else {
-      File(srcPath!).copySync(dst);
+    try {
+      if (bytes != null) {
+        File(dst).writeAsBytesSync(bytes, flush: true);
+      } else {
+        File(srcPath!).copySync(dst);
+      }
+    } on FileSystemException catch (e) {
+      throw StateError('附件写入失败：$e');
     }
     return (fileName: name, absPath: dst);
   }
@@ -803,7 +814,7 @@ class SnapshotIndexFile {
   /// ★ 统一走 [safeFileSegment]（models.dart）—— 这份原来**漏了 Windows
   ///   保留名检查**：附件名恰好叫 `con` / `aux` 时在 Windows 上建文件会失败
   ///   （审查报告 #5/#10/#24）。
-  static String _safe(String s) => safeFileSegment(s);
+  static String _safe(String s) => utils.safeFileSegment(s);
 
   /// 附件名必须是**单层、已净化**的名字（防目录穿越）。
   ///
@@ -824,12 +835,10 @@ class PruneResult {
   /// 被删除的数据文件数。
   final int deletedFiles;
 
-  /// 被移除的索引条目数（含附件目录被清理的）。
+  /// 被移除的索引���目数（含附件目录被清理的）。
   final int deletedEntries;
 
   @override
   String toString() =>
       'PruneResult(files=$deletedFiles, entries=$deletedEntries)';
 }
-
-
