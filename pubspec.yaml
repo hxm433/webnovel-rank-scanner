@@ -8,3 +8,6 @@ environment:
 dependencies:
   # 只依赖它 —— 调 Win32 API 必需。UI、绘图、控件全部自写，不引入 Flutter/Qt。
   ffi: ^2.1.0
+
+dev_dependencies:
+  test: ^1.25.0
