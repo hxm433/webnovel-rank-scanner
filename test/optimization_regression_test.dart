@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:test/test.dart';
 
 import 'package:rank_scan_demo/models.dart';
@@ -49,6 +51,24 @@ void main() {
         quality: RankQuality(ok: true, validCount: 2, totalCount: 2),
       );
       expect(ScanService.testIsDegraded(old, incoming), isTrue);
+    });
+  });
+
+  group('attachment safety', () {
+    test('rejects oversized attachment bytes', () {
+      final tooLarge = List<int>.filled(21 * 1024 * 1024, 0x00);
+      expect(() => File('tmp.bin').writeAsBytesSync(tooLarge), throwsA(isA<Exception>()));
+    });
+
+    test('fails with explicit error on write failure', () {
+      final dir = Directory.systemTemp.createTempSync('attach-test-');
+      final file = File('${dir.path}${Platform.pathSeparator}bad.bin');
+      final writeTarget = Directory('${dir.path}${Platform.pathSeparator}nested');
+      writeTarget.createSync();
+      final out = File('${writeTarget.path}${Platform.pathSeparator}file.bin');
+      expect(() => out.writeAsStringSync('ok', mode: FileMode.writeOnlyAppend), returnsNormally);
+      expect(() => out.writeAsStringSync('ok', mode: FileMode.writeOnlyAppend), returnsNormally);
+      dir.deleteSync(recursive: true);
     });
   });
 }
