@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'models.dart';
+import 'utils.dart' as utils;
 
 class SnapshotMeta {
   SnapshotMeta({
@@ -126,7 +127,8 @@ class SnapshotIndex {
     // ★★ id 必须**稳定**。原来这里发一遍、排序后又按位置重发一遍
     //   （`id: i + 1`），于是每采一份新快照、全体 id 都往后挪一位 ——
     //   而 `selectedId` 是跨 reload 保留的，明细页/导出会**悄悄切到另一份快照**。
-    //   现在按文件路径算一个稳定 id（FNV-1a），路径不变 id 就不变。
+    //   现在按相对路径算一个稳定 id（FNV-1a），路径不变 id 就不变——
+    //   这也让"移动 out/ 目录"不会导致历史快照错位。
     final usedIds = <int>{};
     for (final f in files) {
       try {
@@ -140,7 +142,8 @@ class SnapshotIndex {
           errors?.add('${f.path}: 缺 result 字段');
           continue;
         }
-        var sid = _stableIdOf(f.path);
+        final rel = SnapshotIndexFile.relPathOf(root, f.path);
+        var sid = _stableIdOf(rel);
         // 极小概率的哈希碰撞：往后挪，保证同一批里唯一
         while (usedIds.contains(sid)) {
           sid = sid == 0xFFFFFFFF ? 1 : sid + 1;
@@ -160,18 +163,11 @@ class SnapshotIndex {
   }
 }
 
-/// 由文件路径算一个**稳定** id（FNV-1a 32 位）。
+/// 由相对路径算一个**稳定** id（FNV-1a 32 位）。
 ///
 /// 不用 `dart:math` 的 hash：那个每次进程启动都不同（有随机种子），
 /// 跨会话就不稳定了 —— 而"跨会话稳定"正是这里要的东西。
-int _stableIdOf(String path) {
-  var h = 0x811C9DC5;
-  for (final c in path.codeUnits) {
-    h ^= c;
-    h = (h * 0x01000193) & 0xFFFFFFFF;
-  }
-  return h == 0 ? 1 : h;
-}
+int _stableIdOf(String path) => utils.stablePathId(path);
 
 /// 是不是"索引文件"而不是快照。
 ///
